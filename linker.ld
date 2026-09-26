@@ -1,5 +1,3 @@
-/* mUnix linker script. ENTRY=_start, базовая точка 1 MiB. */
-
 ENTRY(_start)
 
 SECTIONS
