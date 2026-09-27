@@ -1,5 +1,3 @@
-/* mUnix linker script. ENTRY=_start, базовая точка 1 MiB. */
-
 ENTRY(_start)
 
 SECTIONS
@@ -9,26 +7,23 @@ SECTIONS
     .text BLOCK(4K) : ALIGN(4K)
     {
         KEEP(*(.multiboot))
-        *(.text)
+        *(.text .text.*)
     }
 
     .rodata BLOCK(4K) : ALIGN(4K)
     {
-        *(.rodata)
-        *(.rodata.*)
+        *(.rodata .rodata.*)
     }
 
     .data BLOCK(4K) : ALIGN(4K)
     {
-        *(.data)
-        *(.data.*)
+        *(.data .data.*)
     }
 
     .bss BLOCK(4K) : ALIGN(4K)
     {
         *(COMMON)
-        *(.bss)
-        *(.bss.*)
+        *(.bss .bss.*)
     }
 
     /DISCARD/ :
