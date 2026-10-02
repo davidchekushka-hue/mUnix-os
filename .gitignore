@@ -1,6 +1,5 @@
 build/
 iso/
-efi/
 *.o
 *.a
 *.bin
