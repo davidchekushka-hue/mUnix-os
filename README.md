@@ -6,7 +6,7 @@
 ![Boot](https://img.shields.io/badge/boot-UEFI%20%2B%20Multiboot2-green)
 ![Mode](https://img.shields.io/badge/mode-long%20mode-orange)
 ![GUI](https://img.shields.io/badge/gui-Rust%20no__std-red)
-![Version](https://img.shields.io/badge/version-v0.8.1-blue)
+![Version](https://img.shields.io/badge/version-v8.2-blue)
 
 ## Features
 

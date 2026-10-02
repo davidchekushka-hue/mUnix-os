@@ -1,4 +1,4 @@
-//! mUnix v0.8.1 — Rust GUI. Blue title bars, colored icons, 5 games.
+//! mUnix v8.2 — Rust GUI. Blue title bars, colored icons, 5 games.
 
 #![no_std]
 #![allow(dead_code)]
@@ -210,6 +210,66 @@ impl<'a> Surface<'a> {
         self.panel_fill(x, y, w, h, bg);
         self.panel_border(x, y, w, h, bd);
     }
+
+    /// Panel with arbitrary corner radius.
+    pub fn panel_round(&mut self, x: i32, y: i32, w: i32, h: i32, bg: u32, bd: u32, r: i32) {
+        let r = if r < 1 { 1 } else if r > 20 { 20 } else { r };
+        if r * 2 >= w || r * 2 >= h {
+            self.panel(x, y, w, h, bg, bd);
+            return;
+        }
+        let rr = (r - 1) * (r - 1);
+        self.rect_fill(x, y + r, w, h - 2 * r, bg);
+        let mut j: i32 = 0;
+        while j < r {
+            let dj = r - 1 - j;
+            let dj2 = dj * dj;
+            let mut left: i32 = 0;
+            while left < r {
+                let di = r - 1 - left;
+                if di * di + dj2 <= rr { break; }
+                left += 1;
+            }
+            self.hline(x + left, x + w - 1 - left, y + j, bg);
+            j += 1;
+        }
+        j = 0;
+        while j < r {
+            let dj = r - 1 - j;
+            let dj2 = dj * dj;
+            let mut left: i32 = 0;
+            while left < r {
+                let di = r - 1 - left;
+                if di * di + dj2 <= rr { break; }
+                left += 1;
+            }
+            self.hline(x + left, x + w - 1 - left, y + h - 1 - j, bg);
+            j += 1;
+        }
+        self.hline(x + r, x + w - 1 - r, y, bd);
+        self.hline(x + r, x + w - 1 - r, y + h - 1, bd);
+        self.vline(x, y + r, y + h - 1 - r, bd);
+        self.vline(x + w - 1, y + r, y + h - 1 - r, bd);
+        j = 0;
+        while j < r {
+            let dj = r - 1 - j;
+            let dj2 = dj * dj;
+            let mut left: i32 = 0;
+            while left < r {
+                let di = r - 1 - left;
+                if di * di + dj2 <= rr { break; }
+                left += 1;
+            }
+            if left < r {
+                self.put(x + left, y + j, bd);
+                self.put(x + w - 1 - left, y + j, bd);
+                self.put(x + left, y + h - 1 - j, bd);
+                self.put(x + w - 1 - left, y + h - 1 - j, bd);
+            }
+            j += 1;
+        }
+    }
+
     pub fn gradient_v(&mut self, y0: i32, y1: i32, top: u32, bot: u32) {
         let n = y1 - y0;
         if n <= 0 { return; }
@@ -530,14 +590,14 @@ impl Terminal {
         } else if eq(cmd, b"clear") {
             self.clear();
         } else if eq(cmd, b"version") {
-            self.print(b"mUnix v0.8.1 (release)");
+            self.print(b"mUnix v8.2 (release)");
             self.print(b"  Arch  : x86_64 (long mode)");
             self.print(b"  Load  : GRUB2 + Multiboot2");
             self.print(b"  GUI   : Rust (no_std, ARGB)");
             self.print(b"  Video : GOP framebuffer, 32-bit");
         } else if eq(cmd, b"about") {
-            self.print(b"mUnix -- minimal UNIX-like OS");
-            self.print(b"https://github.com/davidchekushka-hue/mUnix-os");
+            self.print(b"opening About window...");
+            unsafe { crate::PENDING_OPEN_ABOUT = true; }
         } else if eq(cmd, b"whoami") { self.print(b"root"); }
         else if eq(cmd, b"pwd")    { self.print(b"/"); }
         else if eq(cmd, b"date") {
@@ -1137,7 +1197,7 @@ impl Settings {
         s.text_cstr(x + 10, yy, b"Theme ............ Dark", theme::TEXT);
         yy += 24;
         if self.sel == 2 { s.rect_fill(x + 6, yy - 2, w - 12, 14, theme::SEL_BG); }
-        s.text_cstr(x + 10, yy, b"About ............ mUnix v0.8.1", theme::TEXT);
+        s.text_cstr(x + 10, yy, b"About ............ mUnix v8.2", theme::TEXT);
         yy += 28;
         s.text_cstr(x + 8, yy, b"Up/Down: navigate", theme::TEXT_DIM);
     }
@@ -1818,7 +1878,7 @@ impl Tetris {
 pub enum Kind {
     Terminal, Files, Editor, Media, Settings,
     Minesweeper, Snake, Pong, Shapes, Tetris, Ide, Browser, Office, SysMon,
-}
+    About,}
 impl Kind {
     fn title(self) -> &'static [u8] {
         match self {
@@ -1836,6 +1896,7 @@ impl Kind {
             Kind::SysMon      => b"Task Manager",
             Kind::Office      => b"mOffice",
             Kind::Browser     => b"Browser",
+            Kind::About       => b"About",
         }
     }
 }
@@ -2247,7 +2308,7 @@ impl Office {
                 let lines: [&[u8]; 7] = [
                     b"# mUnix Release Notes",
                     b"",
-                    b"## v0.8.1",
+                    b"## v8.2",
                     b"",
                     b"- 64-bit long mode",
                     b"- UEFI + GRUB + Multiboot2",
@@ -2283,7 +2344,7 @@ impl Office {
             OfcMode::Impress => {
                 let lines: [&[u8]; 6] = [
                     b"=========================",
-                    b"  mUnix v0.8.1 (release)",
+                    b"  mUnix v8.2 (release)",
                     b"=========================",
                     b"",
                     b"  64-bit UEFI operating system",
@@ -2938,6 +2999,82 @@ impl SysMon {
     }
 }
 
+
+// ============================================================
+// About Window
+// ============================================================
+fn draw_raccoon_face(s: &mut Surface, cx: i32, cy: i32, r: i32) {
+    let ear1_x = cx - r * 11 / 10;
+    let ear1_y = cy - r * 9 / 10;
+    s.circle_fill(ear1_x, ear1_y, r * 4 / 10, 0xFF4A4A4A);
+    s.circle_fill(ear1_x + r / 2, ear1_y + r / 8, r * 35 / 100, 0xFF6B6B6B);
+    s.circle_fill(ear1_x + r * 7 / 10, ear1_y + r / 5, r * 27 / 100, 0xFF4A4A4A);
+    s.circle_fill(cx, cy, r, 0xFF8C8C8C);
+    s.circle_fill(cx, cy - 2, r * 92 / 100, 0xFF9E9E9E);
+    let mut i: i32 = 0;
+    while i < r * 42 / 100 {
+        let h = i / 2;
+        s.hline(cx - r * 8 / 10 + h, cx - r * 31 / 100 - h, cy - r * 86 / 100 - i, 0xFF4A4A4A);
+        s.hline(cx + r * 31 / 100 + h, cx + r * 8 / 10 - h, cy - r * 86 / 100 - i, 0xFF4A4A4A);
+        i += 1;
+    }
+    i = 0;
+    while i < r * 23 / 100 {
+        let h = i / 2;
+        s.hline(cx - r * 73 / 100 + h, cx - r * 42 / 100 - h, cy - r * 81 / 100 - i, 0xFFAA8888);
+        s.hline(cx + r * 42 / 100 + h, cx + r * 73 / 100 - h, cy - r * 81 / 100 - i, 0xFFAA8888);
+        i += 1;
+    }
+    s.circle_fill(cx, cy + r / 10, r * 69 / 100, 0xFFE8E8E8);
+    s.circle_fill(cx - r * 35 / 100, cy - r * 8 / 100, r * 35 / 100, 0xFF1E1E1E);
+    s.circle_fill(cx + r * 35 / 100, cy - r * 8 / 100, r * 35 / 100, 0xFF1E1E1E);
+    s.rect_fill(cx - r * 8 / 100, cy - r * 31 / 100, r * 16 / 100, r * 39 / 100, 0xFFE8E8E8);
+    s.circle_fill(cx - r * 35 / 100, cy - r * 8 / 100, r * 15 / 100, 0xFFFFFFFF);
+    s.circle_fill(cx + r * 35 / 100, cy - r * 8 / 100, r * 15 / 100, 0xFFFFFFFF);
+    s.circle_fill(cx - r * 35 / 100, cy - r * 8 / 100, r * 8 / 100, 0xFF000000);
+    s.circle_fill(cx + r * 35 / 100, cy - r * 8 / 100, r * 8 / 100, 0xFF000000);
+    s.put(cx - r * 38 / 100, cy - r * 15 / 100, 0xFFFFFFFF);
+    s.put(cx + r * 32 / 100, cy - r * 15 / 100, 0xFFFFFFFF);
+    s.circle_fill(cx, cy + r * 27 / 100, r * 11 / 100, 0xFF1E1E1E);
+    s.put(cx - 1, cy + r * 23 / 100, 0xFFFFFFFF);
+    s.line(cx, cy + r * 38 / 100, cx, cy + r / 2, 0xFF1E1E1E);
+    s.line(cx, cy + r / 2, cx - r * 11 / 100, cy + r * 58 / 100, 0xFF1E1E1E);
+    s.line(cx, cy + r / 2, cx + r * 11 / 100, cy + r * 58 / 100, 0xFF1E1E1E);
+    s.line(cx - r * 38 / 100, cy + r * 38 / 100, cx - r * 85 / 100, cy + r * 31 / 100, 0xFFD0D0D0);
+    s.line(cx - r * 38 / 100, cy + r * 46 / 100, cx - r * 88 / 100, cy + r / 2, 0xFFD0D0D0);
+    s.line(cx + r * 38 / 100, cy + r * 38 / 100, cx + r * 85 / 100, cy + r * 31 / 100, 0xFFD0D0D0);
+    s.line(cx + r * 38 / 100, cy + r * 46 / 100, cx + r * 88 / 100, cy + r / 2, 0xFFD0D0D0);
+}
+
+pub struct AboutWin {}
+
+impl AboutWin {
+    pub const fn new() -> Self { Self {} }
+    pub fn handle_key(&mut self, _k: i32) {}
+    pub fn render(&self, s: &mut Surface, x: i32, y: i32, w: i32, h: i32) {
+        s.rect_fill(x, y, w, h, 0xFF0E1B2A);
+        let cx = x + w / 2;
+        let cy = y + 100;
+        draw_raccoon_face(s, cx, cy, 70);
+        let mut yy = cy + 100;
+        let pad = 30;
+        let lines: [&[u8]; 6] = [
+            b"OS      : mUnix 8.2",
+            b"Build   : 02.10.26",
+            b"Github  : github.com/davidchekushka-hue/mUnix-os",
+            b"License : MIT",
+            b"Kernel  : kernel.c9",
+            b"By Larp Dev!",
+        ];
+        let mut i = 0;
+        while i < lines.len() {
+            s.text_cstr(x + pad, yy, lines[i], theme::TEXT);
+            yy += 18;
+            i += 1;
+        }
+    }
+}
+
 pub struct Gui {
     show_welcome: bool,
     wins: [Window; MAX_WIN],
@@ -2957,6 +3094,7 @@ pub struct Gui {
     sysmon: SysMon,
     office: Office,
     browser: Browser,
+    about_win: AboutWin,
     mouse_x: i32, mouse_y: i32,
     mouse_down: bool,
     drag_win: i32, drag_off_x: i32, drag_off_y: i32,
@@ -2982,6 +3120,7 @@ impl Gui {
             sysmon: SysMon::new(),
             office: Office::new(),
             browser: Browser::new(),
+            about_win: AboutWin::new(),
             mouse_x: 0, mouse_y: 0,
             mouse_down: false,
             drag_win: -1, drag_off_x: 0, drag_off_y: 0,
@@ -3114,12 +3253,12 @@ impl Gui {
         self.open(k);
     }
     fn render(&mut self, s: &mut Surface) {
-        s.gradient_v(0, s.h, theme::BG_TOP, theme::BG_BOT);
-        // raccoon on wallpaper
-        {
-            let rx = s.w - 220;
-            let ry = s.h - 240;
-            if rx > 100 && ry > 100 { draw_raccoon(s, rx, ry); }
+        extern "C" {
+            fn munix_wallpaper_blit(px: *mut u32, w: i32, h: i32) -> i32;
+        }
+        let rc = unsafe { munix_wallpaper_blit(s.px.as_mut_ptr(), s.w, s.h) };
+        if rc != 0 {
+            s.rect_fill(0, 0, s.w, s.h, 0xFF000000);
         }
         for i in 0..self.nwin { self.render_win(s, i); }
         self.render_dock(s);
@@ -3177,7 +3316,8 @@ impl Gui {
             Kind::Ide         => unsafe { (*gptr).ide.render(s, cx0, cy0, cw, ch); },
             Kind::SysMon      => unsafe { (*gptr).sysmon.render(s, cx0, cy0, cw, ch); },
             Kind::Office      => unsafe { (*gptr).office.render(s, cx0, cy0, cw, ch, (*gptr).mouse_x, (*gptr).mouse_y); },
-            Kind::Browser     => unsafe { (*gptr).browser.render(s, cx0, cy0, cw, ch, (*gptr).mouse_x, (*gptr).mouse_y); }
+            Kind::Browser     => unsafe { (*gptr).browser.render(s, cx0, cy0, cw, ch, (*gptr).mouse_x, (*gptr).mouse_y); },
+            Kind::About       => unsafe { (*gptr).about_win.render(s, cx0, cy0, cw, ch); }
         }
     }
     fn render_dock(&self, s: &mut Surface) {
@@ -3185,8 +3325,8 @@ impl Gui {
         let total_w = items * theme::DOCK_ICON + (items - 1) * theme::DOCK_GAP + theme::DOCK_PAD * 2;
         let x = (s.w - total_w) / 2;
         let y = s.h - theme::DOCK_H - 14;
-        s.panel_fill(x + 3, y + 3, total_w, theme::DOCK_H, theme::SHADOW);
-        s.panel(x, y, total_w, theme::DOCK_H, theme::BG_PANEL, theme::BORDER);
+        s.panel_round(x + 3, y + 3, total_w, theme::DOCK_H, theme::SHADOW, theme::SHADOW, 16);
+        s.panel_round(x, y, total_w, theme::DOCK_H, theme::BG_PANEL, theme::BORDER, 16);
         let hover = self.hit_dock(self.mouse_x, self.mouse_y);
         for i in 0..items {
             let ix = x + theme::DOCK_PAD + i * (theme::DOCK_ICON + theme::DOCK_GAP);
@@ -3507,10 +3647,10 @@ fn draw_welcome_overlay(s: &mut Surface) {
             }
         }
     }
-    s.text_cstr(x + 20, y + 12, b"Welcome to mUnix v0.8.1 (release)", 0xFFFFFFFF);
+    s.text_cstr(x + 20, y + 12, b"Welcome to mUnix v8.2 (release)", 0xFFFFFFFF);
     let mut yy = y + 60;
     s.text_cstr(x + 30, yy, b"Your new open-source operating system.", theme::TEXT); yy += 24;
-    s.text_cstr(x + 30, yy, b"Version: v0.8.1 (release)  |  64-bit long mode", theme::ACCENT_H); yy += 20;
+    s.text_cstr(x + 30, yy, b"Version: v8.2 (release)  |  64-bit long mode", theme::ACCENT_H); yy += 20;
     s.text_cstr(x + 30, yy, b"Running entirely in RAM. No installation required.", theme::TEXT); yy += 20;
     s.text_cstr(x + 30, yy, b"Built with C and Rust. Boots on any x86 machine via QEMU.", theme::TEXT); yy += 36;
     s.text_cstr(x + 30, yy, b"Components:", theme::TEXT_DIM); yy += 24;
@@ -3595,6 +3735,7 @@ static mut PENDING_OPEN_OFFICE: bool = false;
 
 static mut PENDING_OPEN_SYSMON: bool = false;
 
+static mut PENDING_OPEN_ABOUT: bool = false;
 static mut GUI: Gui = Gui::new();
 
 #[inline]
@@ -3618,7 +3759,7 @@ pub unsafe extern "C" fn munix_gui_init_dock() {
     g.pg = Pong::new();        g.pg.reset();
     g.sh = Shapes::new();
     g.tt = Tetris::new();      g.tt.reset();
-    g.term.print(b"mUnix v0.8.1 (release) -- 64-bit long mode, Rust GUI");
+    g.term.print(b"mUnix v8.2 (release) -- 64-bit long mode, Rust GUI");
     g.term.print(b"Type 'help' for full list of commands.");
     g.term.print(b"");
     g.term.print(b"Dock: Terminal Files Editor Media Settings");
@@ -3704,6 +3845,7 @@ pub unsafe extern "C" fn munix_gui_key(k: i32) {
             (*gptr).office.handle_key(k);
         }
         Kind::Browser     => { (*gptr).browser.handle_key(k); }
+        Kind::About       => { (*gptr).about_win.handle_key(k); }
     }
 }
 
@@ -3716,6 +3858,11 @@ pub unsafe extern "C" fn munix_gui_click(x: i32, y: i32, buttons: i32) {
 #[no_mangle]
 pub unsafe extern "C" fn munix_gui_ticks(_t: u32) {
     let g = gui();
+    if PENDING_OPEN_ABOUT {
+        PENDING_OPEN_ABOUT = false;
+        g.open(Kind::About);
+    }
+
     if PENDING_OPEN_SYSMON {
         PENDING_OPEN_SYSMON = false;
         g.open(Kind::SysMon);

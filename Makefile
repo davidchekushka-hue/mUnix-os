@@ -46,15 +46,15 @@ $(BUILD)/lexbor_wrap.o: lexbor_wrap.c | $(BUILD)
 	gcc -m64 -ffreestanding -fno-stack-protector -fno-builtin -nostdlib \
 	    -O2 -msse -msse2 -mno-avx -Wall -Wextra -std=gnu11 -c -o $@ $<
 
-$(KERNEL_NOBLOB): rust $(BUILD)/boot.o $(BUILD)/kernel_nb.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o linker.ld
-	ld $(LDFLAGS) -z noexecstack -o $@ $(BUILD)/boot.o $(BUILD)/kernel_nb.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o liblexbor.a $(RUST_LIB)
+$(KERNEL_NOBLOB): rust $(BUILD)/boot.o $(BUILD)/kernel_nb.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/font_render.o $(BUILD)/font_blob.o $(BUILD)/wallpaper_blob.o linker.ld
+	ld $(LDFLAGS) -z noexecstack -o $@ $(BUILD)/boot.o $(BUILD)/kernel_nb.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/font_render.o $(BUILD)/font_blob.o $(BUILD)/wallpaper_blob.o liblexbor.a $(RUST_LIB)
 	@echo ">>> $@: $$(stat -c%s $@) bytes"
 
 $(BUILD)/kernel_blob.o: $(KERNEL_NOBLOB) | $(BUILD)
 	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 $< $@
 
-$(KERNEL): rust $(BUILD)/boot.o $(BUILD)/kernel.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/kernel_blob.o linker.ld
-	ld $(LDFLAGS) -z noexecstack -o $@ $(BUILD)/boot.o $(BUILD)/kernel.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/kernel_blob.o liblexbor.a $(RUST_LIB)
+$(KERNEL): rust $(BUILD)/boot.o $(BUILD)/kernel.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/font_render.o $(BUILD)/font_blob.o $(BUILD)/kernel_blob.o $(BUILD)/wallpaper_blob.o linker.ld
+	ld $(LDFLAGS) -z noexecstack -o $@ $(BUILD)/boot.o $(BUILD)/kernel.o $(BUILD)/lexbor_wrap.o $(BUILD)/grub_blob.o $(BUILD)/font_render.o $(BUILD)/font_blob.o $(BUILD)/kernel_blob.o $(BUILD)/wallpaper_blob.o liblexbor.a $(RUST_LIB)
 	@echo ">>> $@: $$(stat -c%s $@) bytes"
 
 iso: $(ISO)
@@ -84,3 +84,12 @@ run-kernel: $(KERNEL)
 clean:
 	rm -rf $(BUILD) $(KERNEL) $(ISO) $(ISOROOT)
 	cd gui && cargo clean || true
+
+$(BUILD)/font_blob.o: fonts/DejaVu14.mfnt | $(BUILD)
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 --rename-section .data=.rodata,alloc,load,readonly,data,contents $< $@
+
+$(BUILD)/font_render.o: font_render.c | $(BUILD)
+	gcc -m64 -ffreestanding -fno-stack-protector -fno-builtin -nostdlib -fno-pic -fno-pie -mno-red-zone -mcmodel=kernel -O2 -Wall -std=gnu11 -c -o $@ $<
+
+$(BUILD)/wallpaper_blob.o: fonts/wallpaper.raw | $(BUILD)
+	objcopy -I binary -O elf64-x86-64 -B i386:x86-64 --rename-section .data=.rodata,alloc,load,readonly,data,contents $< $@

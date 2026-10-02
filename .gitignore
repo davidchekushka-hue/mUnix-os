@@ -32,3 +32,9 @@ gui/target/
 *~
 .DS_Store
 *.log
+
+# Generated fonts / wallpapers (regenerate via fonts/*.py)
+fonts/*.raw
+fonts/*.mfnt
+
+sever-nine.jpeg

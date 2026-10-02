@@ -1,12 +1,27 @@
 /*
- * mUnix-kernel v0.8.1 — C hardware layer + RAMFS, GUI delegated to Rust.
+ * mUnix-kernel v8.2 — C hardware layer + RAMFS, GUI delegated to Rust.
  * Back-buffer + dirty flag eliminates flicker.
  */
 
 #include "io.h"
 
+/* ===== Anti-aliased font (font_render.c, compiled with SSE) ===== */
+extern int munix_font_aa_init(void);
+extern void munix_debug_adv(void);
+extern int munix_font_aa_ready(void);
+extern int munix_font_aa_text(unsigned int *px, int w, int h,
+                              int x, int y, const char *s,
+                              unsigned int fg, int size);
+extern int munix_font_aa_glyph(unsigned int *px, int w, int h,
+                               int x, int y, int ch,
+                               unsigned int fg, int size);
+extern int munix_font_aa_line_height(int size);
+extern int munix_font_aa_ascent(int size);
+
+#define MUNIX_FONT_SIZE 14
+
 #ifndef MUNIX_VERSION
-#define MUNIX_VERSION "0.8.1"
+#define MUNIX_VERSION "8.2"
 #endif
 #ifndef MUNIX_BUILD
 #define MUNIX_BUILD "release"
@@ -124,7 +139,7 @@ extern const unsigned char _binary_mUnix_kernel_noblob_bin_end[];
 /* ========================================= */
 
 
-/* ==== Multiboot2 (v9.0.0) ==== */
+/* ==== Multiboot2 (v8.2) ==== */
 #define MB2_MAGIC 0x36d76289u
 
 struct mb2_tag {
@@ -504,6 +519,10 @@ void munix_font_glyph(unsigned int *px, int w, int h,
                       int x, int y, unsigned char ch, unsigned int argb) {
     unsigned char u = ch; const unsigned char *g; int row, col;
     if (!px) return;
+    if (munix_font_aa_ready()) {
+        munix_font_aa_glyph(px, w, h, x, y, (int)ch, argb, MUNIX_FONT_SIZE);
+        return;
+    }
     if (u < 0x20 || u > 0x7F) u = '?';
     g = F8[(int)(u - 0x20)];
     for (row = 0; row < 8; row++) {
@@ -521,6 +540,7 @@ void munix_font_text(unsigned int *px, int w, int h,
                      int x, int y, const char *s, unsigned int argb) {
     int cx = x;
     if (!px || !s) return;
+    /* AA text disabled — using per-glyph AA */
     while (*s) {
         if (*s == '\n') { cx = x; y += 9; s++; continue; }
         munix_font_glyph(px, w, h, cx, y, (unsigned char)*s, argb);
@@ -566,7 +586,7 @@ static void fs_init(void) {
     int i, d_home, d_docs;
     for (i=0;i<FS_MAX;i++){ fs[i].used=0; fs[i].parent=-1; fs[i].name[0]=0; fs[i].size=0; }
     fstop=0;
-    fs_alloc(-1,"readme.txt",0); fs_write(fs_lookup(-1,"readme.txt"),"Welcome to mUnix v0.8.1 (Rust GUI).");
+    fs_alloc(-1,"readme.txt",0); fs_write(fs_lookup(-1,"readme.txt"),"Welcome to mUnix v8.2 (Rust GUI).");
     fs_alloc(-1,"about.txt",0);  fs_write(fs_lookup(-1,"about.txt"),"https://mUnixOs.com");
     d_home = fs_alloc(-1,"home",1);
     d_docs = fs_alloc(-1,"docs",1);
@@ -3035,7 +3055,19 @@ const char *munix_sysmon_text(void) {
     }
     si_puts("\n");
 
-    /* --- Uptime --- */
+    
+
+struct wall_hdr {
+    unsigned char magic[4];
+    unsigned int  w;
+    unsigned int  h;
+    unsigned int  reserved;
+} __attribute__((packed));
+
+
+
+
+/* --- Uptime --- */
     si_puts("--- Uptime ---\n");
     si_puts("Up      : "); fmt_uptime(g_ticks); si_puts("\n");
     si_puts("Ticks   : "); si_num_u((unsigned long long)g_ticks); si_puts(" (18.2 Hz PIT)\n");
@@ -3043,6 +3075,121 @@ const char *munix_sysmon_text(void) {
 
     return g_sysinfo_buf;
 }
+
+
+
+/* ===== Procedural Aurora Wallpaper (Frutiger Aero) ===== */
+static int g_aurora_w = 0, g_aurora_h = 0;
+static unsigned int *g_aurora_cache = 0;
+
+static int aurora_tri(int a) {
+    a &= 4095;
+    if (a < 2048) return a - 1024;
+    return 3072 - a;
+}
+
+static void aurora_generate(unsigned int *px, int w, int h) {
+    int x, y, i;
+    for (y = 0; y < h; y++) {
+        int t = (y * 255) / h;
+        int r = (8 * (255 - t)) / 255;
+        int g = (20 * (255 - t) + 4 * t) / 255;
+        int b = (48 * (255 - t) + 12 * t) / 255;
+        unsigned int c = 0xFF000000u | ((unsigned)r << 16) | ((unsigned)g << 8) | (unsigned)b;
+        unsigned int *row = px + y * w;
+        for (x = 0; x < w; x++) row[x] = c;
+    }
+    static const unsigned char band_rgb[6][3] = {
+        {  20, 220, 120 }, {  70, 255, 160 }, {  40, 230, 190 },
+        { 130, 255, 180 }, {  30, 200, 140 }, {  90, 255, 170 },
+    };
+    int band;
+    for (band = 0; band < 6; band++) {
+        int base_y = h / 5 + band * (h / 16);
+        int amp = 30 + band * 12;
+        int sig = 25 + band * 6;
+        int ph1 = band * 733, ph2 = band * 1459;
+        int bright = 200 - band * 12;
+        if (bright < 50) bright = 50;
+        int sig2 = sig * sig;
+        const unsigned char *bc = band_rgb[band];
+        for (x = 0; x < w; x++) {
+            int a1 = (x * 3 + ph1) & 4095;
+            int a2 = (x * 7 + ph2) & 4095;
+            int wave = aurora_tri(a1) / 6 + aurora_tri(a2) / 12;
+            int cy = base_y + (wave * amp) / 256;
+            int y0 = cy - sig * 2, y1 = cy + sig * 2;
+            if (y0 < 0) y0 = 0;
+            if (y1 >= h) y1 = h - 1;
+            for (y = y0; y <= y1; y++) {
+                int dy = y - cy;
+                int denom = sig2 + dy * dy;
+                int inten = (bright * sig2) / denom;
+                if (inten <= 0) continue;
+                if (inten > bright) inten = bright;
+                unsigned int *p = px + y * w + x;
+                unsigned int bg = *p;
+                int br = (int)((bg >> 16) & 0xFF);
+                int gg = (int)((bg >> 8) & 0xFF);
+                int bb = (int)(bg & 0xFF);
+                br += ((int)bc[0] * inten) / 255;
+                gg += ((int)bc[1] * inten) / 255;
+                bb += ((int)bc[2] * inten) / 255;
+                if (br > 255) br = 255;
+                if (gg > 255) gg = 255;
+                if (bb > 255) bb = 255;
+                *p = 0xFF000000u | ((unsigned)br << 16) | ((unsigned)gg << 8) | (unsigned)bb;
+            }
+        }
+    }
+    unsigned int seed = 0xC0FFEEu;
+    for (i = 0; i < 300; i++) {
+        seed = seed * 1103515245u + 12345u;
+        int sx = (int)((seed >> 16) & 0x7FFF) % w;
+        seed = seed * 1103515245u + 12345u;
+        int sy = (int)((seed >> 16) & 0x3FFF) % (h / 2);
+        int sb = 100 + (int)(seed & 0x6F);
+        unsigned int sc = 0xFF000000u | ((unsigned)sb << 16) | ((unsigned)sb << 8) | (unsigned)sb;
+        px[sy * w + sx] = sc;
+        if (sb > 150) {
+            if (sx + 1 < w) px[sy * w + sx + 1] = sc;
+            if (sy + 1 < h) px[(sy + 1) * w + sx] = sc;
+        }
+    }
+    int fs = (h * 3) / 4;
+    for (y = fs; y < h; y++) {
+        int fade = ((y - fs) * 255) / (h - fs);
+        unsigned int *row = px + y * w;
+        for (x = 0; x < w; x++) {
+            unsigned int bg = row[x];
+            int r = (int)((bg >> 16) & 0xFF);
+            int g = (int)((bg >> 8) & 0xFF);
+            int b = (int)(bg & 0xFF);
+            r = (r * (255 - fade)) / 255;
+            g = (g * (255 - fade)) / 255;
+            b = (b * (255 - fade)) / 255;
+            row[x] = 0xFF000000u | ((unsigned)r << 16) | ((unsigned)g << 8) | (unsigned)b;
+        }
+    }
+}
+
+int munix_wallpaper_blit(unsigned int *px, int w, int h) {
+    if (!px || w <= 0 || h <= 0) return -1;
+    if (!g_aurora_cache || g_aurora_w != w || g_aurora_h != h) {
+        if (g_aurora_cache) { kfree(g_aurora_cache); g_aurora_cache = 0; }
+        unsigned long sz = (unsigned long)w * (unsigned long)h * 4UL;
+        g_aurora_cache = (unsigned int *)kmalloc(sz);
+        if (!g_aurora_cache) return -2;
+        aurora_generate(g_aurora_cache, w, h);
+        g_aurora_w = w; g_aurora_h = h;
+    }
+    unsigned long n = (unsigned long)w * (unsigned long)h;
+    unsigned int *src = g_aurora_cache;
+    unsigned long i;
+    for (i = 0; i < n; i++) px[i] = src[i];
+    return 0;
+}
+
 
 void kernel_main(unsigned int magic, unsigned long long mbi_addr) {
     serial_init();
@@ -3082,6 +3229,8 @@ void kernel_main(unsigned int magic, unsigned long long mbi_addr) {
       serial_puts("g_w  = "); serial_hex((unsigned long long)g_w); serial_puts("\n");
       serial_puts("g_h  = "); serial_hex((unsigned long long)g_h); serial_puts("\n");
       if (_vrc != 0)  { t_clear(); t_write(1,0,"VBE init failed.",0x0C); for(;;) __asm__ volatile("hlt"); }
+      serial_puts("MK1 before font_aa_init\n"); { int frc = munix_font_aa_init();
+        munix_debug_adv(); serial_puts("MK2 after init, rc="); serial_hex((unsigned long long)(long long)frc); serial_puts("\n"); }
 
     /* Invalidate VGA text → switch to graphics */
     serial_puts("calling munix_gui_init_dock\n"); munix_gui_init_dock(); serial_puts("init_dock OK\n");
